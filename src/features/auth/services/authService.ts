@@ -1,6 +1,10 @@
 import { supabase } from '@/lib/supabase';
 import { generateGuestName } from '@/lib/utils';
 
+// Use untyped client for upsert to avoid Database generic inference issues
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
 export const authService = {
     async signInAnonymously() {
         const { data, error } = await supabase.auth.signInAnonymously();
@@ -24,10 +28,10 @@ export const authService = {
         if (error) throw error;
 
         if (data.user) {
-            await supabase.from('profiles').upsert({
+            await db.from('profiles').upsert({
                 id: data.user.id,
                 nickname: generateGuestName(),
-                interests: [] as string[],
+                interests: [],
                 is_online: true,
                 last_seen: new Date().toISOString(),
             });
