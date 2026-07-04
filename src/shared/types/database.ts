@@ -17,7 +17,17 @@ export interface Database {
                     created_at: string;
                     updated_at: string;
                 };
-                Insert: Omit<Database['public']['Tables']['profiles']['Row'], 'created_at' | 'updated_at'>;
+                Insert: {
+                    id: string;
+                    nickname: string;
+                    gender?: 'male' | 'female' | 'other' | null;
+                    age?: number | null;
+                    country?: string | null;
+                    interests?: string[];
+                    avatar_url?: string | null;
+                    is_online?: boolean;
+                    last_seen?: string;
+                };
                 Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
             };
             waiting_queue: {

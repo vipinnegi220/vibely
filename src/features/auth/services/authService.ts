@@ -1,8 +1,5 @@
 import { supabase } from '@/lib/supabase';
 import { generateGuestName } from '@/lib/utils';
-import type { Database } from '@/shared/types/database';
-
-type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
 
 export const authService = {
     async signInAnonymously() {
@@ -27,14 +24,13 @@ export const authService = {
         if (error) throw error;
 
         if (data.user) {
-            const profile: ProfileInsert = {
+            await supabase.from('profiles').upsert({
                 id: data.user.id,
                 nickname: generateGuestName(),
-                interests: [],
+                interests: [] as string[],
                 is_online: true,
                 last_seen: new Date().toISOString(),
-            };
-            await supabase.from('profiles').upsert(profile);
+            });
         }
 
         return data;
