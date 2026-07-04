@@ -2,7 +2,37 @@ import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { authService } from '@/features/auth/services/authService';
+import { generateGuestName } from '@/lib/utils';
 import { toast } from '@/shared/hooks/useToast';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
+async function fetchOrCreateProfile(userId: string) {
+    // Use maybeSingle to avoid 406 when row doesn't exist
+    const { data: existing } = await db
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (existing) return existing;
+
+    // Auto-create profile for anonymous/guest users
+    const { data: created } = await db
+        .from('profiles')
+        .insert({
+            id: userId,
+            nickname: generateGuestName(),
+            interests: [],
+            is_online: true,
+            last_seen: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+    return created;
+}
 
 export function useAuthInit() {
     const { setUser, setSession, setProfile, setLoading, setInitialized } = useAuthStore();
@@ -19,15 +49,11 @@ export function useAuthInit() {
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
+                    const profile = await fetchOrCreateProfile(session.user.id);
                     if (mounted) setProfile(profile);
                 }
             } catch {
-                // Session check failed silently
+                // silent
             } finally {
                 if (mounted) {
                     setLoading(false);
@@ -45,11 +71,7 @@ export function useAuthInit() {
                 setUser(session?.user ?? null);
 
                 if (session?.user) {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
+                    const profile = await fetchOrCreateProfile(session.user.id);
                     if (mounted) setProfile(profile);
                 } else {
                     setProfile(null);
