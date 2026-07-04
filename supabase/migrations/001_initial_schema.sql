@@ -82,16 +82,16 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
 );
 
 -- Indexes for Performance
-CREATE INDEX idx_profiles_is_online ON public.profiles(is_online);
-CREATE INDEX idx_waiting_queue_user_id ON public.waiting_queue(user_id);
-CREATE INDEX idx_waiting_queue_chat_type ON public.waiting_queue(chat_type);
-CREATE INDEX idx_matches_user1 ON public.matches(user1_id);
-CREATE INDEX idx_matches_user2 ON public.matches(user2_id);
-CREATE INDEX idx_matches_status ON public.matches(status);
-CREATE INDEX idx_messages_match_id ON public.messages(match_id);
-CREATE INDEX idx_messages_created_at ON public.messages(created_at DESC);
-CREATE INDEX idx_blocks_blocker ON public.blocks(blocker_id);
-CREATE INDEX idx_blocks_blocked ON public.blocks(blocked_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_is_online ON public.profiles(is_online);
+CREATE INDEX IF NOT EXISTS idx_waiting_queue_user_id ON public.waiting_queue(user_id);
+CREATE INDEX IF NOT EXISTS idx_waiting_queue_chat_type ON public.waiting_queue(chat_type);
+CREATE INDEX IF NOT EXISTS idx_matches_user1 ON public.matches(user1_id);
+CREATE INDEX IF NOT EXISTS idx_matches_user2 ON public.matches(user2_id);
+CREATE INDEX IF NOT EXISTS idx_matches_status ON public.matches(status);
+CREATE INDEX IF NOT EXISTS idx_messages_match_id ON public.messages(match_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON public.messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON public.blocks(blocker_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON public.blocks(blocked_id);
 
 -- Function: Update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
