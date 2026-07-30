@@ -46,36 +46,34 @@ export function useMatching(): UseMatchingReturn {
         setMatch(null);
 
         try {
-            // Realtime: listen for new match rows involving this user
             const channel = supabase
                 .channel(`match-listen:${user.id}`)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' },
                     (payload) => {
                         const m = payload.new as Match;
+                        console.log('[matching] realtime INSERT received:', m.id, 'user1:', m.user1_id, 'user2:', m.user2_id, 'me:', user.id);
                         if (m.user1_id === user.id || m.user2_id === user.id) {
                             handleMatch(m);
                         }
                     })
-                .subscribe((s) => console.log('[matching] realtime:', s));
+                .subscribe((s) => console.log('[matching] realtime status:', s));
 
             realtimeRef.current = channel;
 
             await matchingService.joinQueue(user.id, chatType);
 
-            // Poll every 2s:
-            // - Device B: tries to create a match with Device A
-            // - Device A: checks if it was already matched (fallback if realtime misses it)
             pollRef.current = setInterval(async () => {
                 if (!activeRef.current) return;
 
-                // Check if we were already matched by someone else
+                // Always check for an existing active match first (covers Device A)
                 const existing = await matchingService.getActiveMatch(user.id);
+                console.log('[matching] existing match:', existing?.id ?? 'none');
                 if (existing && activeRef.current) {
                     handleMatch(existing);
                     return;
                 }
 
-                // Try to match with a waiting user
+                // Then try to create one (covers Device B)
                 const found = await matchingService.tryMatch(user.id, chatType);
                 if (found && activeRef.current) {
                     handleMatch(found);
