@@ -5,17 +5,27 @@ import type { Match } from '@/shared/types';
 const db = supabase as any;
 
 export const matchingService = {
-    async joinQueue(userId: string, chatType: 'text' | 'video', genderFilter = 'any', countryFilter: string | null = null, interests: string[] = []) {
-        // Remove any existing queue entry first
+    async joinQueue(
+        userId: string,
+        chatType: 'text' | 'video',
+        genderFilter = 'any',
+        countryFilter: string | null = null,
+        interests: string[] = []
+    ) {
+        // Remove any stale entry first
         await db.from('waiting_queue').delete().eq('user_id', userId);
 
-        const { data, error } = await db.from('waiting_queue').insert({
-            user_id: userId,
-            gender_filter: genderFilter,
-            country_filter: countryFilter,
-            interests,
-            chat_type: chatType,
-        }).select().single();
+        const { data, error } = await db
+            .from('waiting_queue')
+            .insert({
+                user_id: userId,
+                gender_filter: genderFilter,
+                country_filter: countryFilter,
+                interests,
+                chat_type: chatType,
+            })
+            .select()
+            .single();
 
         if (error) throw error;
         return data;
@@ -25,11 +35,12 @@ export const matchingService = {
         await db.from('waiting_queue').delete().eq('user_id', userId);
     },
 
-    async findMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
-        // Find someone else waiting with same chat type, not the current user
+    // Called by the SECOND person to join — they find the first and create the match
+    async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
+        // Find oldest waiting person (not ourselves)
         const { data: candidates } = await db
             .from('waiting_queue')
-            .select('user_id')
+            .select('user_id, joined_at')
             .eq('chat_type', chatType)
             .neq('user_id', userId)
             .order('joined_at', { ascending: true })
@@ -39,23 +50,28 @@ export const matchingService = {
 
         const partnerId = candidates[0].user_id;
 
-        // Create a match
-        const { data: match, error } = await db
+        // Remove both from queue atomically before creating match
+        // This prevents double-matching
+        const { error: deleteError } = await db
+            .from('waiting_queue')
+            .delete()
+            .in('user_id', [userId, partnerId]);
+
+        if (deleteError) return null;
+
+        // Create the match
+        const { data: match, error: matchError } = await db
             .from('matches')
             .insert({
-                user1_id: userId,
-                user2_id: partnerId,
+                user1_id: partnerId, // the one who was waiting first
+                user2_id: userId,    // the one who just joined
                 chat_type: chatType,
                 status: 'active',
             })
             .select()
             .single();
 
-        if (error) throw error;
-
-        // Remove both from queue
-        await db.from('waiting_queue').delete().in('user_id', [userId, partnerId]);
-
+        if (matchError) return null;
         return match as Match;
     },
 
@@ -66,36 +82,25 @@ export const matchingService = {
             .eq('id', matchId);
     },
 
-    async getActiveMatch(userId: string): Promise<Match | null> {
-        const { data } = await db
-            .from('matches')
-            .select('*')
-            .eq('status', 'active')
-            .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
-            .order('started_at', { ascending: false })
-            .limit(1)
-            .single();
-
-        return data as Match | null;
-    },
-
-    subscribeToQueue(userId: string, onMatch: (match: Match) => void) {
+    // Subscribe to new matches where this user is involved
+    subscribeToMatches(userId: string, onMatch: (match: Match) => void) {
+        // We listen on a user-specific broadcast channel
         const channel = supabase
-            .channel(`queue:${userId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'matches',
-                filter: `user1_id=eq.${userId}`,
-            }, (payload) => onMatch(payload.new as Match))
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'matches',
-                filter: `user2_id=eq.${userId}`,
-            }, (payload) => onMatch(payload.new as Match))
+            .channel(`user-match:${userId}`)
+            .on('broadcast', { event: 'matched' }, ({ payload }) => {
+                onMatch(payload as Match);
+            })
             .subscribe();
 
         return () => supabase.removeChannel(channel);
+    },
+
+    // Notify the partner they've been matched
+    async notifyMatch(partnerId: string, match: Match) {
+        await supabase.channel(`user-match:${partnerId}`).send({
+            type: 'broadcast',
+            event: 'matched',
+            payload: match,
+        });
     },
 };

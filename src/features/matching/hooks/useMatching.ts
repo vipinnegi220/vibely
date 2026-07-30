@@ -18,42 +18,54 @@ export function useMatching(): UseMatchingReturn {
     const [status, setStatus] = useState<ConnectionStatus>('idle');
     const [match, setMatch] = useState<Match | null>(null);
     const [chatType, setChatType] = useState<ChatType>('video');
+
     const unsubRef = useRef<(() => void) | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const activeRef = useRef(false); // prevent state updates after stop
 
     const cleanup = useCallback(() => {
+        activeRef.current = false;
         if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     }, []);
 
+    const handleMatch = useCallback((newMatch: Match) => {
+        if (!activeRef.current) return;
+        cleanup();
+        setMatch(newMatch);
+        setStatus('connected');
+    }, [cleanup]);
+
     const startSearching = useCallback(async () => {
         if (!user) return;
+        cleanup();
+        activeRef.current = true;
         setStatus('searching');
         setMatch(null);
 
         try {
+            // Subscribe to incoming match notifications BEFORE joining queue
+            unsubRef.current = matchingService.subscribeToMatches(user.id, handleMatch);
+
+            // Join the queue
             await matchingService.joinQueue(user.id, chatType);
 
-            // Subscribe to realtime match events
-            unsubRef.current = matchingService.subscribeToQueue(user.id, (newMatch) => {
-                cleanup();
-                setMatch(newMatch);
-                setStatus('connected');
-            });
-
-            // Also poll every 2s as fallback
+            // Poll every 2s — try to match with whoever is already waiting
             pollRef.current = setInterval(async () => {
-                const found = await matchingService.findMatch(user.id, chatType);
-                if (found) {
-                    cleanup();
-                    setMatch(found);
-                    setStatus('connected');
+                if (!activeRef.current) return;
+
+                const found = await matchingService.tryMatch(user.id, chatType);
+                if (found && activeRef.current) {
+                    // Notify the partner (user1) via broadcast
+                    await matchingService.notifyMatch(found.user1_id, found);
+                    handleMatch(found);
                 }
             }, 2000);
+
         } catch {
-            setStatus('error');
+            if (activeRef.current) setStatus('error');
         }
-    }, [user, chatType, cleanup]);
+    }, [user, chatType, cleanup, handleMatch]);
 
     const stopSearching = useCallback(async () => {
         if (!user) return;
@@ -68,11 +80,9 @@ export function useMatching(): UseMatchingReturn {
         cleanup();
         await matchingService.endMatch(match.id);
         setMatch(null);
-        // Re-enter queue
         startSearching();
     }, [user, match, cleanup, startSearching]);
 
-    // Cleanup on unmount
     useEffect(() => () => cleanup(), [cleanup]);
 
     return { status, match, chatType, setChatType, startSearching, stopSearching, skipPartner };
