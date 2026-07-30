@@ -12,7 +12,6 @@ export const matchingService = {
         countryFilter: string | null = null,
         interests: string[] = []
     ) {
-        // Remove any stale entry first
         await db.from('waiting_queue').delete().eq('user_id', userId);
 
         const { data, error } = await db
@@ -27,51 +26,70 @@ export const matchingService = {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error('[matching] joinQueue error:', error);
+            throw error;
+        }
+        console.log('[matching] joined queue:', data);
         return data;
     },
 
     async leaveQueue(userId: string) {
         await db.from('waiting_queue').delete().eq('user_id', userId);
+        console.log('[matching] left queue:', userId);
     },
 
-    // Called by the SECOND person to join — they find the first and create the match
     async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
-        // Find oldest waiting person (not ourselves)
-        const { data: candidates } = await db
+        // See who else is waiting
+        const { data: candidates, error: fetchError } = await db
             .from('waiting_queue')
             .select('user_id, joined_at')
             .eq('chat_type', chatType)
             .neq('user_id', userId)
             .order('joined_at', { ascending: true })
-            .limit(1);
+            .limit(5);
+
+        if (fetchError) {
+            console.error('[matching] fetch candidates error:', fetchError);
+            return null;
+        }
+
+        console.log('[matching] candidates found:', candidates?.length ?? 0, candidates);
 
         if (!candidates || candidates.length === 0) return null;
 
         const partnerId = candidates[0].user_id;
+        console.log('[matching] attempting match with partner:', partnerId);
 
-        // Remove both from queue atomically before creating match
-        // This prevents double-matching
+        // Remove both from queue
         const { error: deleteError } = await db
             .from('waiting_queue')
             .delete()
             .in('user_id', [userId, partnerId]);
 
-        if (deleteError) return null;
+        if (deleteError) {
+            console.error('[matching] delete queue error:', deleteError);
+            return null;
+        }
 
-        // Create the match
+        // Create match
         const { data: match, error: matchError } = await db
             .from('matches')
             .insert({
-                user1_id: partnerId, // the one who was waiting first
-                user2_id: userId,    // the one who just joined
+                user1_id: partnerId,
+                user2_id: userId,
                 chat_type: chatType,
                 status: 'active',
             })
             .select()
             .single();
 
-        if (matchError) return null;
+        if (matchError) {
+            console.error('[matching] create match error:', matchError);
+            return null;
+        }
+
+        console.log('[matching] match created:', match);
         return match as Match;
     },
 
@@ -82,25 +100,31 @@ export const matchingService = {
             .eq('id', matchId);
     },
 
-    // Subscribe to new matches where this user is involved
     subscribeToMatches(userId: string, onMatch: (match: Match) => void) {
-        // We listen on a user-specific broadcast channel
+        console.log('[matching] subscribing to matches for:', userId);
         const channel = supabase
             .channel(`user-match:${userId}`)
             .on('broadcast', { event: 'matched' }, ({ payload }) => {
+                console.log('[matching] received match broadcast:', payload);
                 onMatch(payload as Match);
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[matching] subscription status:', status);
+            });
 
         return () => supabase.removeChannel(channel);
     },
 
-    // Notify the partner they've been matched
     async notifyMatch(partnerId: string, match: Match) {
-        await supabase.channel(`user-match:${partnerId}`).send({
+        console.log('[matching] notifying partner:', partnerId, match);
+        const ch = supabase.channel(`user-match:${partnerId}`);
+        await ch.subscribe();
+        await ch.send({
             type: 'broadcast',
             event: 'matched',
             payload: match,
         });
+        // Small delay then cleanup
+        setTimeout(() => supabase.removeChannel(ch), 2000);
     },
 };
