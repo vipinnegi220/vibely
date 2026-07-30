@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { matchingService } from '../services/matchingService';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import type { Match, ConnectionStatus, ChatType } from '@/shared/types';
@@ -19,18 +20,22 @@ export function useMatching(): UseMatchingReturn {
     const [match, setMatch] = useState<Match | null>(null);
     const [chatType, setChatType] = useState<ChatType>('video');
 
-    const unsubRef = useRef<(() => void) | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const activeRef = useRef(false); // prevent state updates after stop
+    const realtimeRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+    const activeRef = useRef(false);
 
     const cleanup = useCallback(() => {
         activeRef.current = false;
-        if (unsubRef.current) { unsubRef.current(); unsubRef.current = null; }
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        if (realtimeRef.current) {
+            supabase.removeChannel(realtimeRef.current);
+            realtimeRef.current = null;
+        }
     }, []);
 
     const handleMatch = useCallback((newMatch: Match) => {
         if (!activeRef.current) return;
+        console.log('[matching] connected to match:', newMatch.id);
         cleanup();
         setMatch(newMatch);
         setStatus('connected');
@@ -44,25 +49,40 @@ export function useMatching(): UseMatchingReturn {
         setMatch(null);
 
         try {
-            // Subscribe to incoming match notifications BEFORE joining queue
-            unsubRef.current = matchingService.subscribeToMatches(user.id, handleMatch);
+            // Listen for new matches via Postgres realtime (more reliable than broadcast)
+            const channel = supabase
+                .channel(`match-listen:${user.id}`)
+                .on('postgres_changes', {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'matches',
+                }, (payload) => {
+                    const newMatch = payload.new as Match;
+                    // Only handle matches where this user is involved
+                    if (newMatch.user1_id === user.id || newMatch.user2_id === user.id) {
+                        handleMatch(newMatch);
+                    }
+                })
+                .subscribe((status) => {
+                    console.log('[matching] realtime status:', status);
+                });
+
+            realtimeRef.current = channel;
 
             // Join the queue
             await matchingService.joinQueue(user.id, chatType);
 
-            // Poll every 2s — try to match with whoever is already waiting
+            // Poll to try to create a match with someone already waiting
             pollRef.current = setInterval(async () => {
                 if (!activeRef.current) return;
-
                 const found = await matchingService.tryMatch(user.id, chatType);
                 if (found && activeRef.current) {
-                    // Notify the partner (user1) via broadcast
-                    await matchingService.notifyMatch(found.user1_id, found);
                     handleMatch(found);
                 }
             }, 2000);
 
-        } catch {
+        } catch (err) {
+            console.error('[matching] startSearching error:', err);
             if (activeRef.current) setStatus('error');
         }
     }, [user, chatType, cleanup, handleMatch]);

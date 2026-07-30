@@ -36,18 +36,16 @@ export const matchingService = {
 
     async leaveQueue(userId: string) {
         await db.from('waiting_queue').delete().eq('user_id', userId);
-        console.log('[matching] left queue:', userId);
     },
 
     async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
-        // See who else is waiting
         const { data: candidates, error: fetchError } = await db
             .from('waiting_queue')
             .select('user_id, joined_at')
             .eq('chat_type', chatType)
             .neq('user_id', userId)
             .order('joined_at', { ascending: true })
-            .limit(5);
+            .limit(1);
 
         if (fetchError) {
             console.error('[matching] fetch candidates error:', fetchError);
@@ -55,13 +53,11 @@ export const matchingService = {
         }
 
         console.log('[matching] candidates found:', candidates?.length ?? 0, candidates);
-
         if (!candidates || candidates.length === 0) return null;
 
         const partnerId = candidates[0].user_id;
         console.log('[matching] attempting match with partner:', partnerId);
 
-        // Remove both from queue
         const { error: deleteError } = await db
             .from('waiting_queue')
             .delete()
@@ -72,7 +68,6 @@ export const matchingService = {
             return null;
         }
 
-        // Create match
         const { data: match, error: matchError } = await db
             .from('matches')
             .insert({
@@ -116,15 +111,22 @@ export const matchingService = {
     },
 
     async notifyMatch(partnerId: string, match: Match) {
-        console.log('[matching] notifying partner:', partnerId, match);
-        const ch = supabase.channel(`user-match:${partnerId}`);
-        await ch.subscribe();
-        await ch.send({
-            type: 'broadcast',
-            event: 'matched',
-            payload: match,
+        console.log('[matching] notifying partner:', partnerId);
+        return new Promise<void>((resolve) => {
+            const ch = supabase.channel(`user-match:${partnerId}`);
+            ch.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    ch.send({
+                        type: 'broadcast',
+                        event: 'matched',
+                        payload: match,
+                    }).then(() => {
+                        console.log('[matching] partner notified');
+                        setTimeout(() => supabase.removeChannel(ch), 3000);
+                        resolve();
+                    });
+                }
+            });
         });
-        // Small delay then cleanup
-        setTimeout(() => supabase.removeChannel(ch), 2000);
     },
 };
