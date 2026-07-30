@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 export default function ChatPage() {
     const navigate = useNavigate();
-    const { user, profile } = useAuthStore();
+    const { user } = useAuthStore();
     const { theme, setTheme } = useTheme();
     const [showReport, setShowReport] = useState(false);
 
