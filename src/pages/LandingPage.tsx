@@ -56,11 +56,27 @@ export default function LandingPage() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col">
-            {/* Nav */}
-            <nav className="border-b border-border/50 backdrop-blur-sm sticky top-0 z-50 bg-background/80">
+
+            {/* ── Full-screen background video ── */}
+            <div className="fixed inset-0 -z-10 overflow-hidden">
+                <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                >
+                    <source src="/forbackground.mp4" type="video/mp4" />
+                </video>
+                {/* Dark overlay so text is readable — 65% opacity */}
+                <div className="absolute inset-0 bg-background/65" />
+            </div>
+
+            {/* ── Nav ── */}
+            <nav className="border-b border-border/30 backdrop-blur-sm sticky top-0 z-50 bg-background/40">
                 <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-vibely-600 flex items-center justify-center">
+                        <div className="h-8 w-8 rounded-lg bg-vibely-600 flex items-center justify-center shadow-lg shadow-vibely-600/30">
                             <Zap className="h-4 w-4 text-white" />
                         </div>
                         <span className="font-bold text-xl tracking-tight">vibely</span>
@@ -71,7 +87,7 @@ export default function LandingPage() {
                 </div>
             </nav>
 
-            {/* Hero */}
+            {/* ── Hero ── */}
             <main className="flex-1">
                 <section className="max-w-6xl mx-auto px-4 pt-20 pb-16 text-center">
                     <motion.div
@@ -106,6 +122,7 @@ export default function LandingPage() {
                                 variant="outline"
                                 onClick={handleAnonymous}
                                 disabled={loading !== null}
+                                className="backdrop-blur-sm bg-background/30"
                             >
                                 {loading === 'anon' ? 'Starting...' : 'Text Chat Only'}
                             </Button>
@@ -123,27 +140,34 @@ export default function LandingPage() {
                         </p>
                     </motion.div>
 
-                    {/* Preview mockup */}
+                    {/* ── Preview video ── */}
                     <motion.div
                         initial={{ opacity: 0, y: 40 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
                         className="mt-16 relative"
                     >
-                        <div className="rounded-2xl border border-border bg-card/50 p-2 shadow-2xl shadow-vibely-600/5 max-w-3xl mx-auto">
-                            <div className="rounded-xl bg-muted/30 aspect-video flex items-center justify-center">
-                                <div className="text-center text-muted-foreground">
-                                    <Video className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                                    <p className="text-sm opacity-50">Live preview</p>
-                                </div>
+                        <div className="rounded-2xl border border-border/40 bg-card/30 backdrop-blur-sm p-2 shadow-2xl shadow-vibely-600/10 max-w-3xl mx-auto overflow-hidden">
+                            <div className="rounded-xl overflow-hidden aspect-video relative">
+                                <video
+                                    autoPlay
+                                    loop
+                                    muted
+                                    playsInline
+                                    className="w-full h-full object-cover"
+                                >
+                                    <source src="/preview.mp4" type="video/mp4" />
+                                </video>
+                                {/* Subtle overlay to blend with card */}
+                                <div className="absolute inset-0 bg-black/10" />
                             </div>
                         </div>
                         {/* Glow */}
-                        <div className="absolute -inset-4 -z-10 bg-vibely-600/5 blur-3xl rounded-full" />
+                        <div className="absolute -inset-4 -z-10 bg-vibely-600/8 blur-3xl rounded-full" />
                     </motion.div>
                 </section>
 
-                {/* Features */}
+                {/* ── Features ── */}
                 <section className="max-w-6xl mx-auto px-4 py-16">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {features.map((f, i) => (
@@ -152,7 +176,7 @@ export default function LandingPage() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.1 * i }}
-                                className="rounded-2xl border border-border bg-card/50 p-6 hover:bg-card transition-colors"
+                                className="rounded-2xl border border-border/40 bg-card/40 backdrop-blur-sm p-6 hover:bg-card/60 transition-colors"
                             >
                                 <div className="h-10 w-10 rounded-xl bg-vibely-600/10 flex items-center justify-center mb-4">
                                     <f.icon className="h-5 w-5 text-vibely-600" />
@@ -165,8 +189,8 @@ export default function LandingPage() {
                 </section>
             </main>
 
-            {/* Footer */}
-            <footer className="border-t border-border/50 py-6 text-center text-sm text-muted-foreground">
+            {/* ── Footer ── */}
+            <footer className="border-t border-border/30 py-6 text-center text-sm text-muted-foreground backdrop-blur-sm">
                 <p>© 2025 Vibely · Connect respectfully · Report abuse</p>
             </footer>
         </div>
