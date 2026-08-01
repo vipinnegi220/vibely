@@ -12,11 +12,10 @@ export const matchingService = {
         countryFilter: string | null = null,
         interests: string[] = []
     ) {
-        // Remove own stale entries first
+        // Remove own entry first
         await db.from('waiting_queue').delete().eq('user_id', userId);
-
-        // Also clean up entries older than 3 minutes (stale from closed tabs)
-        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+        // Clean stale entries older than 5 minutes
+        const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
         await db.from('waiting_queue').delete().lt('joined_at', cutoff);
 
         const { data, error } = await db
@@ -46,25 +45,23 @@ export const matchingService = {
     },
 
     async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
-        // Only consider entries from the last 3 minutes (avoids matching stale entries)
-        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-
+        // No cutoff filter — stale entries are cleaned on joinQueue
         const { data: candidates, error: fetchError } = await db
             .from('waiting_queue')
             .select('user_id, joined_at')
             .eq('chat_type', chatType)
             .neq('user_id', userId)
-            .gte('joined_at', cutoff)
             .order('joined_at', { ascending: true })
             .limit(1);
 
         if (fetchError) { console.error('[matching] fetch error:', fetchError); return null; }
-        console.log('[matching] candidates:', candidates?.length ?? 0);
+        console.log('[matching] candidates:', candidates?.length ?? 0, candidates);
         if (!candidates || candidates.length === 0) return null;
 
         const partnerId = candidates[0].user_id;
-        console.log('[matching] matching with:', partnerId);
+        console.log('[matching] matching with partner:', partnerId);
 
+        // Delete both from queue atomically
         const { error: deleteError } = await db
             .from('waiting_queue')
             .delete()
