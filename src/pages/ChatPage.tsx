@@ -36,10 +36,7 @@ export default function ChatPage() {
     const [videoEnabled, setVideoEnabled] = useState(false);
     const [audioEnabled, setAudioEnabled] = useState(false);
 
-    const {
-        status, match, chatType, setChatType,
-        startSearching, stopSearching, skipPartner,
-    } = useMatching();
+    const { status, match, chatType, setChatType, startSearching, stopSearching, skipPartner } = useMatching();
 
     const partnerId = match
         ? (match.user1_id === user?.id ? match.user2_id : match.user1_id)
@@ -48,7 +45,6 @@ export default function ChatPage() {
     const isConnected = status === 'connected';
     const isSearching = status === 'searching';
 
-    // Listen for partner switching chat type
     const handlePartnerTypeSwitch = useCallback((newType: ChatType) => {
         toast({ title: `Partner switched to ${newType} mode` });
         setChatType(newType);
@@ -63,8 +59,7 @@ export default function ChatPage() {
     });
 
     const { messages, partnerTyping, sendMessage, notifyTyping, clearMessages } = useChat(
-        match?.id ?? null,
-        user?.id ?? null
+        match?.id ?? null, user?.id ?? null
     );
 
     const { localStream, remoteStream, camOn, micOn, connectionState, toggleCam, toggleMic, stopAll } = useVideo({
@@ -99,56 +94,37 @@ export default function ChatPage() {
         }
     }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Switch chat type during a live session
     async function handleTypeSwitch(newType: ChatType) {
-        if (!isConnected) {
-            setChatType(newType);
-            return;
-        }
+        if (!isConnected) { setChatType(newType); return; }
+        if (newType === chatType) return;
 
-        if (newType === 'video' && chatType !== 'video') {
-            // Stop any existing video/audio first
-            stopAll();
-            setVideoEnabled(false);
-            setAudioEnabled(false);
+        if (newType === 'video') {
+            stopAll(); setVideoEnabled(false); setAudioEnabled(false);
             setChatType('video');
             sendInvite();
             await switchType('video');
             return;
         }
-
-        if (newType === 'audio' && chatType !== 'audio') {
-            stopAll();
-            setVideoEnabled(false);
-            setChatType('audio');
-            setAudioEnabled(true);
+        if (newType === 'audio') {
+            stopAll(); setVideoEnabled(false);
+            setChatType('audio'); setAudioEnabled(true);
             await switchType('audio');
-            toast({ title: 'Switched to audio mode' });
+            toast({ title: 'Switched to audio' });
             return;
         }
-
-        // Text — stop all media
-        stopAll();
-        setVideoEnabled(false);
-        setAudioEnabled(false);
-        setChatType('text');
-        resetInvite();
+        stopAll(); setVideoEnabled(false); setAudioEnabled(false);
+        setChatType('text'); resetInvite();
         await switchType('text');
-        toast({ title: 'Switched to text mode' });
+        toast({ title: 'Switched to text' });
     }
 
     function handleSkip() {
-        stopAll();
-        skipPartner();
-        setVideoEnabled(false);
-        setAudioEnabled(false);
-        resetInvite();
+        stopAll(); skipPartner();
+        setVideoEnabled(false); setAudioEnabled(false); resetInvite();
     }
 
     function handleLeave() {
-        stopAll();
-        stopSearching();
-        navigate('/');
+        stopAll(); stopSearching(); navigate('/');
     }
 
     async function handleReport() {
@@ -171,9 +147,17 @@ export default function ChatPage() {
         <div className="h-[100dvh] bg-background flex flex-col overflow-hidden">
 
             {/* Top Bar */}
-            <header className="h-14 border-b border-border/50 px-3 flex items-center justify-between shrink-0 bg-background/90 backdrop-blur-sm z-10">
+            <header className={cn(
+                'h-14 px-3 flex items-center justify-between shrink-0 z-30',
+                showVideo
+                    ? 'absolute top-0 left-0 right-0 bg-transparent'
+                    : 'border-b border-border/50 bg-background/90 backdrop-blur-sm relative'
+            )}>
                 <div className="flex items-center gap-2">
-                    <button onClick={handleLeave} className="font-bold text-lg text-vibely-600 tracking-tight">
+                    <button onClick={handleLeave} className={cn(
+                        'font-bold text-lg tracking-tight',
+                        showVideo ? 'text-white drop-shadow' : 'text-vibely-600'
+                    )}>
                         vibely
                     </button>
                     <Badge
@@ -185,8 +169,10 @@ export default function ChatPage() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {/* Mode selector — always visible */}
-                    <div className="flex items-center gap-0.5 bg-muted rounded-lg p-1">
+                    <div className={cn(
+                        'flex items-center gap-0.5 rounded-lg p-1',
+                        showVideo ? 'bg-black/40 backdrop-blur-sm' : 'bg-muted'
+                    )}>
                         {CHAT_MODES.map(({ type, icon: Icon, label }) => (
                             <button
                                 key={type}
@@ -194,8 +180,8 @@ export default function ChatPage() {
                                 className={cn(
                                     'px-2 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1',
                                     chatType === type
-                                        ? 'bg-background shadow-sm text-foreground'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                        ? showVideo ? 'bg-white/20 text-white' : 'bg-background shadow-sm text-foreground'
+                                        : showVideo ? 'text-white/60 hover:text-white' : 'text-muted-foreground hover:text-foreground'
                                 )}
                             >
                                 <Icon className="h-3 w-3" />
@@ -203,18 +189,27 @@ export default function ChatPage() {
                             </button>
                         ))}
                     </div>
-
-                    <Button size="icon-sm" variant="ghost" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className={showVideo ? 'text-white hover:bg-white/10' : ''}
+                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    >
                         {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                     </Button>
-                    <Button size="icon-sm" variant="ghost" onClick={handleLeave}>
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className={showVideo ? 'text-white hover:bg-white/10' : ''}
+                        onClick={handleLeave}
+                    >
                         <LogOut className="h-4 w-4" />
                     </Button>
                 </div>
             </header>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className={cn('flex flex-col overflow-hidden', showVideo ? 'flex-1 relative' : 'flex-1')}>
 
                 {/* NOT CONNECTED */}
                 <AnimatePresence mode="wait">
@@ -253,46 +248,104 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* CONNECTED */}
+                {/* CONNECTED — video mode: full screen video with chat overlay */}
                 <AnimatePresence>
-                    {isConnected && (
+                    {isConnected && showVideo && (
                         <motion.div
-                            key="connected"
+                            key="video-mode"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0"
+                        >
+                            {/* Full screen video */}
+                            <VideoPanel
+                                localStream={localStream}
+                                remoteStream={remoteStream}
+                                camOn={camOn}
+                                micOn={micOn}
+                                onToggleCam={toggleCam}
+                                onToggleMic={toggleMic}
+                                className="absolute inset-0"
+                            />
+
+                            {/* Connection state pill */}
+                            <div className="absolute top-16 left-3 text-[10px] bg-black/50 text-white/70 px-2 py-0.5 rounded-full z-20">
+                                {connectionState}
+                            </div>
+
+                            {/* Chat overlay — bottom portion */}
+                            <div className="absolute bottom-14 left-0 right-0 z-20 flex flex-col"
+                                style={{ maxHeight: '55%' }}>
+                                <ChatPanel
+                                    messages={messages}
+                                    userId={user?.id ?? ''}
+                                    partnerTyping={partnerTyping}
+                                    onSend={sendMessage}
+                                    onTyping={notifyTyping}
+                                    disabled={!isConnected}
+                                    overlay
+                                />
+                            </div>
+
+                            {/* Bottom controls bar */}
+                            <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between px-4 z-30 bg-gradient-to-t from-black/60 to-transparent safe-bottom">
+                                <div className="flex items-center gap-2">
+                                    {/* Report */}
+                                    <div className="relative">
+                                        <Button size="icon-sm" variant="ghost"
+                                            className="text-white/70 hover:text-white hover:bg-white/10 rounded-full"
+                                            onClick={() => setShowReport(v => !v)}>
+                                            <Flag className="h-4 w-4" />
+                                        </Button>
+                                        <AnimatePresence>
+                                            {showReport && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                                                    className="absolute left-0 bottom-10 z-50 bg-popover border border-border rounded-xl shadow-xl p-3 w-44 space-y-2"
+                                                >
+                                                    <p className="text-xs font-medium">Report this user?</p>
+                                                    <Button size="sm" variant="destructive" className="w-full text-xs" onClick={handleReport}>
+                                                        Report & Block
+                                                    </Button>
+                                                    <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setShowReport(false)}>
+                                                        Cancel
+                                                    </Button>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={handleSkip}
+                                        className="gap-1.5 h-9 bg-black/40 border-white/20 text-white hover:bg-black/60 backdrop-blur-sm">
+                                        <SkipForward className="h-4 w-4" /> Next
+                                    </Button>
+                                    <Button variant="destructive" size="sm" onClick={handleLeave} className="gap-1.5 h-9">
+                                        <LogOut className="h-4 w-4" /> Leave
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* CONNECTED — text/audio mode: standard layout */}
+                <AnimatePresence>
+                    {isConnected && !showVideo && (
+                        <motion.div
+                            key="text-mode"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             className="flex-1 flex flex-col overflow-hidden"
                         >
-                            {/* Video area */}
+                            {/* Audio indicator */}
                             <AnimatePresence>
-                                {showVideo && (
-                                    <motion.div
-                                        key="video"
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        className="shrink-0 overflow-hidden"
-                                    >
-                                        <div className="relative bg-zinc-900" style={{ height: 'min(45vw, 240px)' }}>
-                                            <VideoPanel
-                                                localStream={localStream}
-                                                remoteStream={remoteStream}
-                                                camOn={camOn}
-                                                micOn={micOn}
-                                                onToggleCam={toggleCam}
-                                                onToggleMic={toggleMic}
-                                            />
-                                            <div className="absolute bottom-12 left-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-full">
-                                                {connectionState}
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
-                            {/* Audio-only indicator */}
-                            <AnimatePresence>
-                                {audioEnabled && !videoEnabled && isConnected && (
+                                {audioEnabled && (
                                     <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
@@ -310,9 +363,7 @@ export default function ChatPage() {
                             <div className="h-10 px-3 border-b border-border/50 flex items-center justify-between shrink-0">
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm font-medium text-muted-foreground">Stranger</span>
-                                    <Badge variant="outline" className="text-[10px] px-1.5">
-                                        {chatType}
-                                    </Badge>
+                                    <Badge variant="outline" className="text-[10px] px-1.5">{chatType}</Badge>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <div className="relative">
@@ -338,7 +389,7 @@ export default function ChatPage() {
                                             )}
                                         </AnimatePresence>
                                     </div>
-                                    <Button size="icon-sm" variant="ghost" onClick={handleSkip} title="Next">
+                                    <Button size="icon-sm" variant="ghost" onClick={handleSkip}>
                                         <SkipForward className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
@@ -355,11 +406,21 @@ export default function ChatPage() {
                                     disabled={!isConnected}
                                 />
                             </div>
+
+                            {/* Bottom bar */}
+                            <div className="h-14 border-t border-border/50 px-4 flex items-center justify-center gap-3 shrink-0 bg-background/90 safe-bottom">
+                                <Button variant="outline" size="sm" onClick={handleSkip} className="gap-1.5 h-9">
+                                    <SkipForward className="h-4 w-4" /> Next
+                                </Button>
+                                <Button variant="destructive" size="sm" onClick={handleLeave} className="gap-1.5 h-9">
+                                    <LogOut className="h-4 w-4" /> Leave
+                                </Button>
+                            </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* Video invite — incoming */}
+                {/* Invite overlays */}
                 <AnimatePresence>
                     {inviteStatus === 'pending_received' && (
                         <motion.div
@@ -368,7 +429,7 @@ export default function ChatPage() {
                             exit={{ opacity: 0, y: 40 }}
                             className="absolute inset-x-0 bottom-20 mx-auto w-full max-w-sm px-4 z-50"
                         >
-                            <div className="bg-card border border-border rounded-2xl p-4 shadow-2xl">
+                            <div className="bg-card/95 backdrop-blur-sm border border-border rounded-2xl p-4 shadow-2xl">
                                 <div className="flex items-center gap-3 mb-3">
                                     <div className="h-10 w-10 rounded-full bg-vibely-600/10 flex items-center justify-center">
                                         <Video className="h-5 w-5 text-vibely-600" />
@@ -391,7 +452,6 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* Video invite — waiting */}
                 <AnimatePresence>
                     {inviteStatus === 'pending_sent' && (
                         <motion.div
@@ -400,7 +460,7 @@ export default function ChatPage() {
                             exit={{ opacity: 0, y: 40 }}
                             className="absolute inset-x-0 bottom-20 mx-auto w-full max-w-sm px-4 z-50"
                         >
-                            <div className="bg-card border border-border rounded-2xl p-4 shadow-xl flex items-center gap-3">
+                            <div className="bg-card/95 backdrop-blur-sm border border-border rounded-2xl p-4 shadow-xl flex items-center gap-3">
                                 <div className="h-8 w-8 rounded-full bg-vibely-600/10 flex items-center justify-center animate-pulse">
                                     <Video className="h-4 w-4 text-vibely-600" />
                                 </div>
@@ -416,7 +476,6 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* Video invite — rejected */}
                 <AnimatePresence>
                     {inviteStatus === 'rejected' && (
                         <motion.div
@@ -433,25 +492,6 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
             </div>
-
-            {/* Bottom Action Bar */}
-            <AnimatePresence>
-                {isConnected && (
-                    <motion.div
-                        initial={{ y: 60 }}
-                        animate={{ y: 0 }}
-                        exit={{ y: 60 }}
-                        className="h-14 border-t border-border/50 px-4 flex items-center justify-center gap-3 shrink-0 bg-background/90 backdrop-blur-sm safe-bottom"
-                    >
-                        <Button variant="outline" size="sm" onClick={handleSkip} className="gap-1.5 h-9">
-                            <SkipForward className="h-4 w-4" /> Next
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={handleLeave} className="gap-1.5 h-9">
-                            <LogOut className="h-4 w-4" /> Leave
-                        </Button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
