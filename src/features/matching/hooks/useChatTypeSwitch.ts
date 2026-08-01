@@ -12,7 +12,9 @@ export function useChatTypeSwitch({ matchId, userId, onPartnerSwitched }: UseCha
     useEffect(() => {
         if (!matchId || !userId) return;
         const unsub = matchingService.subscribeToTypeSwitch(matchId, userId, onPartnerSwitched);
-        return unsub;
+        return () => {
+            unsub();
+        };
     }, [matchId, userId, onPartnerSwitched]);
 
     const switchType = useCallback(async (newType: ChatType) => {

@@ -97,7 +97,7 @@ export const matchingService = {
         matchId: string,
         userId: string,
         onSwitch: (newType: ChatType) => void
-    ) {
+    ): () => void {
         const channel = supabase
             .channel(`type-switch:${matchId}`)
             .on('broadcast', { event: 'type-switch' }, ({ payload }) => {
@@ -107,6 +107,6 @@ export const matchingService = {
                 }
             })
             .subscribe();
-        return () => supabase.removeChannel(channel);
+        return () => { supabase.removeChannel(channel).catch(() => { }); };
     },
 };
