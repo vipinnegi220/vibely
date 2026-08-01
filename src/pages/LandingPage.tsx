@@ -96,7 +96,7 @@ export default function LandingPage() {
                         transition={{ duration: 0.5 }}
                     >
                         <Badge variant="vibely" className="mb-6">
-                            ✨ Free to use · No account required
+                            Free to use · No account required
                         </Badge>
                         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-tight">
                             Meet new people,{' '}
