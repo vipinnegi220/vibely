@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-    SkipForward, MessageSquare, Video, LogOut, Flag,
-    Moon, Sun, VideoOff, X, Check, Mic,
+    SkipForward, MessageSquare, Video, VideoOff, LogOut, Flag,
+    Moon, Sun, X, Check, Mic, MicOff,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
