@@ -9,7 +9,7 @@ interface UseMatchingReturn {
     match: Match | null;
     chatType: ChatType;
     setChatType: (t: ChatType) => void;
-    startSearching: () => void;
+    startSearching: (type?: ChatType) => void;
     stopSearching: () => void;
     skipPartner: () => void;
 }
@@ -18,18 +18,20 @@ export function useMatching(): UseMatchingReturn {
     const { user } = useAuthStore();
     const [status, setStatus] = useState<ConnectionStatus>('idle');
     const [match, setMatch] = useState<Match | null>(null);
-    const [chatType, setChatType] = useState<ChatType>('video');
+    const [chatType, setChatTypeState] = useState<ChatType>('text');
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const realtimeRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const disconnectRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
-    // "searching" = currently in queue looking for match
-    // "intentional_stop" = user manually left, don't auto-restart
     const searchingRef = useRef(false);
     const currentMatchIdRef = useRef<string | null>(null);
-    const chatTypeRef = useRef<ChatType>('video');
-    useEffect(() => { chatTypeRef.current = chatType; }, [chatType]);
+    // Always reflects the latest chatType synchronously
+    const chatTypeRef = useRef<ChatType>('text');
+
+    const setChatType = useCallback((t: ChatType) => {
+        chatTypeRef.current = t;
+        setChatTypeState(t);
+    }, []);
 
     const stopPoll = useCallback(() => {
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -43,7 +45,6 @@ export function useMatching(): UseMatchingReturn {
         if (disconnectRef.current) { supabase.removeChannel(disconnectRef.current); disconnectRef.current = null; }
     }, []);
 
-    // Watch for partner ending the match
     const listenForPartnerDisconnect = useCallback((matchId: string, restartSearch: () => void) => {
         stopDisconnectListener();
         const ch = supabase
@@ -72,7 +73,6 @@ export function useMatching(): UseMatchingReturn {
 
     const handleMatch = useCallback((newMatch: Match, restartFn: () => void) => {
         console.log('[matching] connected to match:', newMatch.id);
-        // Stop searching machinery but keep searchingRef true so disconnect can restart
         stopPoll();
         stopRealtime();
         currentMatchIdRef.current = newMatch.id;
@@ -81,10 +81,14 @@ export function useMatching(): UseMatchingReturn {
         listenForPartnerDisconnect(newMatch.id, restartFn);
     }, [stopPoll, stopRealtime, listenForPartnerDisconnect]);
 
-    const startSearching = useCallback(async () => {
+    const startSearching = useCallback(async (type?: ChatType) => {
         if (!user) return;
 
-        // Stop any existing search/connection
+        // Use provided type, or fall back to current ref value (already synced)
+        const effectiveType = type ?? chatTypeRef.current;
+        chatTypeRef.current = effectiveType;
+        setChatTypeState(effectiveType);
+
         stopPoll();
         stopRealtime();
         stopDisconnectListener();
@@ -93,11 +97,9 @@ export function useMatching(): UseMatchingReturn {
         setStatus('searching');
         setMatch(null);
 
-        // Capture a stable reference for restart callbacks
-        const restart = () => startSearching();
+        const restart = () => startSearching(chatTypeRef.current);
 
         try {
-            // Realtime: catches match INSERT immediately
             const channel = supabase
                 .channel(`match-listen:${user.id}-${Date.now()}`)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' },
@@ -112,20 +114,18 @@ export function useMatching(): UseMatchingReturn {
 
             realtimeRef.current = channel;
 
-            await matchingService.joinQueue(user.id, chatTypeRef.current);
+            console.log('[matching] joining queue with type:', effectiveType);
+            await matchingService.joinQueue(user.id, effectiveType);
 
-            // Poll every 2s as reliable fallback
             pollRef.current = setInterval(async () => {
                 if (!searchingRef.current) return;
 
-                // Check if someone matched us (Device A scenario)
                 const existing = await matchingService.getActiveMatch(user.id);
                 if (existing && searchingRef.current) {
                     handleMatch(existing, restart);
                     return;
                 }
 
-                // Try to match with someone waiting (Device B scenario)
                 const found = await matchingService.tryMatch(user.id, chatTypeRef.current);
                 if (found && searchingRef.current) {
                     handleMatch(found, restart);
@@ -161,8 +161,7 @@ export function useMatching(): UseMatchingReturn {
         currentMatchIdRef.current = null;
         if (matchId) await matchingService.endMatch(matchId);
         setMatch(null);
-        // searchingRef stays true — we want to re-search
-        startSearching();
+        startSearching(chatTypeRef.current);
     }, [user, stopPoll, stopRealtime, stopDisconnectListener, startSearching]);
 
     useEffect(() => {

@@ -230,7 +230,7 @@ export default function ChatPage() {
                                                 variant={chatType === type ? 'vibely' : 'outline'}
                                                 size="lg"
                                                 className="flex-1 gap-2"
-                                                onClick={() => { setChatType(type); startSearching(); }}
+                                                onClick={() => startSearching(type)}
                                             >
                                                 <Icon className="h-5 w-5" /> {label}
                                             </Button>
