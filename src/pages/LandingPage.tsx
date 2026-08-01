@@ -55,7 +55,7 @@ export default function LandingPage() {
     }
 
     return (
-        <div className="min-h-screen bg-background flex flex-col">
+        <div className="relative min-h-screen flex flex-col overflow-hidden">
 
             {/* ── Full-screen background video ── */}
             <div className="fixed inset-0 -z-10 overflow-hidden">
