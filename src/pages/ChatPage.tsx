@@ -222,11 +222,18 @@ export default function ChatPage() {
                             className="flex-1 flex flex-col relative"
                         >
                             {/* Background video */}
-                            <div className="absolute inset-0 overflow-hidden -z-10">
-                                <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+                            <div className="absolute inset-0 z-0 overflow-hidden">
+                                <video
+                                    autoPlay
+                                    loop
+                                    muted
+                                    playsInline
+                                    className="absolute inset-0 w-full h-full object-cover opacity-40"
+                                >
                                     <source src="/startchat.mp4" type="video/mp4" />
                                 </video>
-                                <div className="absolute inset-0 bg-background/70" />
+
+                                <div className="absolute inset-0 bg-black/40" />
                             </div>
                             {isSearching ? (
                                 <SearchingScreen onCancel={stopSearching} />
