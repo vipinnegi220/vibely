@@ -222,7 +222,7 @@ export default function ChatPage() {
                             className="flex-1 flex flex-col relative"
                         >
                             {/* Background video */}
-                            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+                            <div className="absolute inset-0 z-0 w-full h-full overflow-hidden pointer-events-none select-none">
                                 <video
                                     autoPlay
                                     loop
