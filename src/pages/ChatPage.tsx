@@ -228,7 +228,7 @@ export default function ChatPage() {
                                     loop
                                     muted
                                     playsInline
-                                    className="absolute inset-0 w-full h-full object-cover opacity-40"
+                                    className="absolute inset-0 w-full h-full object-contain opacity-40"
                                 >
                                     <source src="/startchat.mp4" type="video/mp4" />
                                 </video>
