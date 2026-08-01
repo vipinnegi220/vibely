@@ -166,13 +166,18 @@ export function useMatching(): UseMatchingReturn {
     }, [user, stopPoll, stopRealtime, stopDisconnectListener, startSearching]);
 
     useEffect(() => {
+        const handleUnload = () => {
+            if (user) matchingService.leaveQueue(user.id);
+        };
+        window.addEventListener('beforeunload', handleUnload);
         return () => {
+            window.removeEventListener('beforeunload', handleUnload);
             searchingRef.current = false;
             stopPoll();
             stopRealtime();
             stopDisconnectListener();
         };
-    }, [stopPoll, stopRealtime, stopDisconnectListener]);
+    }, [user, stopPoll, stopRealtime, stopDisconnectListener]);
 
     return { status, match, chatType, setChatType, startSearching, stopSearching, skipPartner };
 }

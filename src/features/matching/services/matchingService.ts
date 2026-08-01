@@ -12,7 +12,13 @@ export const matchingService = {
         countryFilter: string | null = null,
         interests: string[] = []
     ) {
+        // Remove own stale entries first
         await db.from('waiting_queue').delete().eq('user_id', userId);
+
+        // Also clean up entries older than 3 minutes (stale from closed tabs)
+        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+        await db.from('waiting_queue').delete().lt('joined_at', cutoff);
+
         const { data, error } = await db
             .from('waiting_queue')
             .insert({ user_id: userId, gender_filter: genderFilter, country_filter: countryFilter, interests, chat_type: chatType })
@@ -27,7 +33,6 @@ export const matchingService = {
         await db.from('waiting_queue').delete().eq('user_id', userId);
     },
 
-    // Check if this user already has an active match created by someone else
     async getActiveMatch(userId: string): Promise<Match | null> {
         const { data } = await db
             .from('matches')
@@ -40,13 +45,16 @@ export const matchingService = {
         return data as Match | null;
     },
 
-    // Try to match with someone already in the queue
     async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
+        // Only consider entries from the last 3 minutes (avoids matching stale entries)
+        const cutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+
         const { data: candidates, error: fetchError } = await db
             .from('waiting_queue')
             .select('user_id, joined_at')
             .eq('chat_type', chatType)
             .neq('user_id', userId)
+            .gte('joined_at', cutoff)
             .order('joined_at', { ascending: true })
             .limit(1);
 
@@ -75,7 +83,8 @@ export const matchingService = {
     },
 
     async endMatch(matchId: string) {
-        await db.from('matches')
+        await db
+            .from('matches')
             .update({ status: 'ended', ended_at: new Date().toISOString() })
             .eq('id', matchId);
     },
