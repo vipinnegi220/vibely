@@ -94,8 +94,8 @@ export function VideoPanel({
                 <div className="absolute bottom-1 left-1 text-[9px] text-white/60 bg-black/40 px-1 rounded">You</div>
             </motion.div>
 
-            {/* Controls row at bottom */}
-            <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-3 z-20">
+            {/* Controls row at bottom — only render if NOT inside ChatPage overlay mode */}
+            <div className="absolute bottom-16 left-0 right-0 flex items-center justify-center gap-3 z-20">
                 <Button
                     size="icon"
                     variant={micOn ? 'secondary' : 'destructive'}

@@ -291,6 +291,24 @@ export default function ChatPage() {
                             {/* Bottom controls bar */}
                             <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between px-4 z-30 bg-gradient-to-t from-black/60 to-transparent safe-bottom">
                                 <div className="flex items-center gap-2">
+                                    {/* Mic toggle */}
+                                    <Button
+                                        size="icon-sm"
+                                        onClick={toggleMic}
+                                        variant={micOn ? 'ghost' : 'destructive'}
+                                        className={cn('rounded-full h-9 w-9', micOn && 'text-white hover:bg-white/10')}
+                                    >
+                                        {micOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                                    </Button>
+                                    {/* Cam toggle */}
+                                    <Button
+                                        size="icon-sm"
+                                        onClick={toggleCam}
+                                        variant={camOn ? 'ghost' : 'destructive'}
+                                        className={cn('rounded-full h-9 w-9', camOn && 'text-white hover:bg-white/10')}
+                                    >
+                                        {camOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                                    </Button>
                                     {/* Report */}
                                     <div className="relative">
                                         <Button size="icon-sm" variant="ghost"
