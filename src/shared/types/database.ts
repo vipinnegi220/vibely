@@ -37,7 +37,7 @@ export interface Database {
                     gender_filter: 'male' | 'female' | 'any';
                     country_filter: string | null;
                     interests: string[];
-                    chat_type: 'text' | 'video';
+                    chat_type: 'text' | 'audio' | 'video';
                     joined_at: string;
                 };
                 Insert: Omit<Database['public']['Tables']['waiting_queue']['Row'], 'joined_at'>;
@@ -48,7 +48,7 @@ export interface Database {
                     id: string;
                     user1_id: string;
                     user2_id: string;
-                    chat_type: 'text' | 'video';
+                    chat_type: 'text' | 'audio' | 'video';
                     status: 'active' | 'ended';
                     started_at: string;
                     ended_at: string | null;

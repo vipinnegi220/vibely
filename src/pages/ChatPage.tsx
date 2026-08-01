@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
     SkipForward, MessageSquare, Video, LogOut, Flag,
-    Moon, Sun, VideoOff, X, Check,
+    Moon, Sun, VideoOff, X, Check, Mic,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
@@ -11,6 +11,7 @@ import { ChatPanel } from '@/features/chat/components/ChatPanel';
 import { VideoPanel } from '@/features/video/components/VideoPanel';
 import { SearchingScreen } from '@/features/matching/components/SearchingScreen';
 import { useMatching } from '@/features/matching/hooks/useMatching';
+import { useChatTypeSwitch } from '@/features/matching/hooks/useChatTypeSwitch';
 import { useChat } from '@/features/chat/hooks/useChat';
 import { useVideo } from '@/features/video/hooks/useVideo';
 import { useVideoInvite } from '@/features/video/hooks/useVideoInvite';
@@ -19,6 +20,13 @@ import { useTheme } from '@/app/ThemeProvider';
 import { moderationService } from '@/features/moderation/services/moderationService';
 import { toast } from '@/shared/hooks/useToast';
 import { cn } from '@/lib/utils';
+import type { ChatType } from '@/shared/types';
+
+const CHAT_MODES: { type: ChatType; icon: typeof Video; label: string }[] = [
+    { type: 'text', icon: MessageSquare, label: 'Text' },
+    { type: 'audio', icon: Mic, label: 'Audio' },
+    { type: 'video', icon: Video, label: 'Video' },
+];
 
 export default function ChatPage() {
     const navigate = useNavigate();
@@ -26,6 +34,7 @@ export default function ChatPage() {
     const { theme, setTheme } = useTheme();
     const [showReport, setShowReport] = useState(false);
     const [videoEnabled, setVideoEnabled] = useState(false);
+    const [audioEnabled, setAudioEnabled] = useState(false);
 
     const {
         status, match, chatType, setChatType,
@@ -39,6 +48,20 @@ export default function ChatPage() {
     const isConnected = status === 'connected';
     const isSearching = status === 'searching';
 
+    // Listen for partner switching chat type
+    const handlePartnerTypeSwitch = useCallback((newType: ChatType) => {
+        toast({ title: `Partner switched to ${newType} mode` });
+        setChatType(newType);
+        setVideoEnabled(newType === 'video');
+        setAudioEnabled(newType === 'audio' || newType === 'video');
+    }, [setChatType]);
+
+    const { switchType } = useChatTypeSwitch({
+        matchId: match?.id ?? null,
+        userId: user?.id ?? null,
+        onPartnerSwitched: handlePartnerTypeSwitch,
+    });
+
     const { messages, partnerTyping, sendMessage, notifyTyping, clearMessages } = useChat(
         match?.id ?? null,
         user?.id ?? null
@@ -48,15 +71,15 @@ export default function ChatPage() {
         matchId: match?.id ?? null,
         userId: user?.id ?? null,
         partnerId,
-        enabled: videoEnabled && isConnected,
+        enabled: (videoEnabled || audioEnabled) && isConnected,
     });
 
-    // Video invite system
     const { inviteStatus, sendInvite, respondToInvite, resetInvite } = useVideoInvite({
         matchId: match?.id ?? null,
         userId: user?.id ?? null,
         onAccepted: useCallback(() => {
             setVideoEnabled(true);
+            setAudioEnabled(true);
             toast({ title: 'Video call accepted!' });
         }, []),
         onRejected: useCallback(() => {
@@ -64,48 +87,56 @@ export default function ChatPage() {
             setChatType('text');
             toast({ title: 'Video call declined', variant: 'destructive' });
         }, [setChatType]),
-        onInviteReceived: useCallback(() => {
-            // handled via inviteStatus UI
-        }, []),
+        onInviteReceived: useCallback(() => { }, []),
     });
 
     useEffect(() => {
         if (match) {
             clearMessages();
             setVideoEnabled(chatType === 'video');
+            setAudioEnabled(chatType === 'audio' || chatType === 'video');
             resetInvite();
         }
     }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // When user switches to video while connected — send invite instead of enabling directly
-    function handleChatTypeChange(type: 'text' | 'video') {
-        if (type === 'video' && isConnected && chatType === 'text') {
+    // Switch chat type during a live session
+    async function handleTypeSwitch(newType: ChatType) {
+        if (!isConnected) {
+            setChatType(newType);
+            return;
+        }
+
+        if (newType === 'video' && chatType !== 'video') {
+            // Video needs invite
             setChatType('video');
             sendInvite();
+            await switchType('video');
             return;
         }
-        if (type === 'text') {
-            setVideoEnabled(false);
+
+        // For text/audio switches — apply immediately and notify partner
+        setChatType(newType);
+        setVideoEnabled(newType === 'video');
+        setAudioEnabled(newType === 'audio' || newType === 'video');
+        if (newType !== 'video') {
             stopAll();
-            setChatType('text');
             resetInvite();
-            return;
         }
-        setChatType(type);
-        setVideoEnabled(type === 'video');
+        await switchType(newType);
+        toast({ title: `Switched to ${newType} mode` });
     }
 
     function handleSkip() {
         stopAll();
         skipPartner();
         setVideoEnabled(false);
+        setAudioEnabled(false);
         resetInvite();
     }
 
     function handleLeave() {
         stopAll();
         stopSearching();
-        setVideoEnabled(false);
         navigate('/');
     }
 
@@ -122,12 +153,13 @@ export default function ChatPage() {
         setShowReport(false);
     }
 
-    const showVideo = videoEnabled && isConnected && (inviteStatus === 'accepted' || inviteStatus === 'idle' && chatType === 'video');
+    const showVideo = videoEnabled && isConnected &&
+        (inviteStatus === 'accepted' || (inviteStatus === 'idle' && chatType === 'video'));
 
     return (
         <div className="h-[100dvh] bg-background flex flex-col overflow-hidden">
 
-            {/* ── Top Bar ── */}
+            {/* Top Bar */}
             <header className="h-14 border-b border-border/50 px-3 flex items-center justify-between shrink-0 bg-background/90 backdrop-blur-sm z-10">
                 <div className="flex items-center gap-2">
                     <button onClick={handleLeave} className="font-bold text-lg text-vibely-600 tracking-tight">
@@ -142,27 +174,24 @@ export default function ChatPage() {
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {/* Chat/Video toggle — only show when not connected, or when in idle */}
-                    {!isConnected && (
-                        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-1">
+                    {/* Mode selector — always visible */}
+                    <div className="flex items-center gap-0.5 bg-muted rounded-lg p-1">
+                        {CHAT_MODES.map(({ type, icon: Icon, label }) => (
                             <button
-                                onClick={() => setChatType('text')}
-                                className={cn('px-2 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1',
-                                    chatType === 'text' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground')}
+                                key={type}
+                                onClick={() => handleTypeSwitch(type)}
+                                className={cn(
+                                    'px-2 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1',
+                                    chatType === type
+                                        ? 'bg-background shadow-sm text-foreground'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                )}
                             >
-                                <MessageSquare className="h-3 w-3" />
-                                <span className="hidden sm:inline">Text</span>
+                                <Icon className="h-3 w-3" />
+                                <span className="hidden sm:inline">{label}</span>
                             </button>
-                            <button
-                                onClick={() => setChatType('video')}
-                                className={cn('px-2 py-1 rounded-md text-xs font-medium transition-colors flex items-center gap-1',
-                                    chatType === 'video' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground')}
-                            >
-                                <Video className="h-3 w-3" />
-                                <span className="hidden sm:inline">Video</span>
-                            </button>
-                        </div>
-                    )}
+                        ))}
+                    </div>
 
                     <Button size="icon-sm" variant="ghost" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
                         {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -173,10 +202,10 @@ export default function ChatPage() {
                 </div>
             </header>
 
-            {/* ── Main Content ── */}
+            {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden relative">
 
-                {/* NOT CONNECTED STATE */}
+                {/* NOT CONNECTED */}
                 <AnimatePresence mode="wait">
                     {!isConnected && (
                         <motion.div
@@ -192,25 +221,20 @@ export default function ChatPage() {
                                 <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
                                     <div className="text-center mb-2">
                                         <h2 className="text-2xl font-bold mb-1">Meet someone new</h2>
-                                        <p className="text-muted-foreground text-sm">Random chat with people worldwide</p>
+                                        <p className="text-muted-foreground text-sm">Choose a mode and start chatting</p>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
-                                        <Button
-                                            variant="vibely"
-                                            size="lg"
-                                            className="flex-1 gap-2"
-                                            onClick={() => { setChatType('video'); startSearching(); }}
-                                        >
-                                            <Video className="h-5 w-5" /> Video Chat
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="lg"
-                                            className="flex-1 gap-2"
-                                            onClick={() => { setChatType('text'); startSearching(); }}
-                                        >
-                                            <MessageSquare className="h-5 w-5" /> Text Chat
-                                        </Button>
+                                    <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+                                        {CHAT_MODES.map(({ type, icon: Icon, label }) => (
+                                            <Button
+                                                key={type}
+                                                variant={chatType === type ? 'vibely' : 'outline'}
+                                                size="lg"
+                                                className="flex-1 gap-2"
+                                                onClick={() => { setChatType(type); startSearching(); }}
+                                            >
+                                                <Icon className="h-5 w-5" /> {label}
+                                            </Button>
+                                        ))}
                                     </div>
                                 </div>
                             )}
@@ -218,7 +242,7 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* CONNECTED STATE */}
+                {/* CONNECTED */}
                 <AnimatePresence>
                     {isConnected && (
                         <motion.div
@@ -228,7 +252,7 @@ export default function ChatPage() {
                             exit={{ opacity: 0 }}
                             className="flex-1 flex flex-col overflow-hidden"
                         >
-                            {/* Video area — collapsible */}
+                            {/* Video area */}
                             <AnimatePresence>
                                 {showVideo && (
                                     <motion.div
@@ -247,7 +271,6 @@ export default function ChatPage() {
                                                 onToggleCam={toggleCam}
                                                 onToggleMic={toggleMic}
                                             />
-                                            {/* WebRTC state pill */}
                                             <div className="absolute bottom-12 left-2 text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-full">
                                                 {connectionState}
                                             </div>
@@ -256,77 +279,76 @@ export default function ChatPage() {
                                 )}
                             </AnimatePresence>
 
-                            {/* Chat area */}
-                            <div className="flex-1 overflow-hidden flex flex-col">
-                                {/* Chat header with controls */}
-                                <div className="h-10 px-3 border-b border-border/50 flex items-center justify-between shrink-0">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-muted-foreground">Stranger</span>
-                                        {/* Video toggle when connected */}
-                                        <button
-                                            onClick={() => handleChatTypeChange(videoEnabled ? 'text' : 'video')}
-                                            className={cn(
-                                                'flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition-colors',
-                                                videoEnabled
-                                                    ? 'border-red-500/30 text-red-500 hover:bg-red-500/10'
-                                                    : 'border-vibely-600/30 text-vibely-600 hover:bg-vibely-600/10'
-                                            )}
-                                        >
-                                            {videoEnabled ? <VideoOff className="h-3 w-3" /> : <Video className="h-3 w-3" />}
-                                            <span className="hidden sm:inline">{videoEnabled ? 'Stop video' : 'Start video'}</span>
-                                        </button>
-                                    </div>
+                            {/* Audio-only indicator */}
+                            <AnimatePresence>
+                                {audioEnabled && !videoEnabled && isConnected && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="shrink-0 bg-vibely-600/10 border-b border-vibely-600/20 px-4 py-2 flex items-center gap-2"
+                                    >
+                                        <Mic className="h-4 w-4 text-vibely-600 animate-pulse" />
+                                        <span className="text-sm text-vibely-600 font-medium">Audio call active</span>
+                                        <span className="text-xs text-muted-foreground ml-auto">{connectionState}</span>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
 
-                                    <div className="flex items-center gap-1">
-                                        {/* Report */}
-                                        <div className="relative">
-                                            <Button size="icon-sm" variant="ghost" onClick={() => setShowReport(v => !v)}>
-                                                <Flag className="h-3.5 w-3.5 text-muted-foreground" />
-                                            </Button>
-                                            <AnimatePresence>
-                                                {showReport && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        exit={{ opacity: 0, scale: 0.95, y: -4 }}
-                                                        className="absolute right-0 top-8 z-50 bg-popover border border-border rounded-xl shadow-xl p-3 w-44 space-y-2"
-                                                    >
-                                                        <p className="text-xs font-medium">Report this user?</p>
-                                                        <Button size="sm" variant="destructive" className="w-full text-xs" onClick={handleReport}>
-                                                            Report & Block
-                                                        </Button>
-                                                        <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setShowReport(false)}>
-                                                            Cancel
-                                                        </Button>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
-                                        <Button size="icon-sm" variant="ghost" onClick={handleSkip} title="Next">
-                                            <SkipForward className="h-3.5 w-3.5" />
+                            {/* Chat header */}
+                            <div className="h-10 px-3 border-b border-border/50 flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-muted-foreground">Stranger</span>
+                                    <Badge variant="outline" className="text-[10px] px-1.5">
+                                        {chatType}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="relative">
+                                        <Button size="icon-sm" variant="ghost" onClick={() => setShowReport(v => !v)}>
+                                            <Flag className="h-3.5 w-3.5 text-muted-foreground" />
                                         </Button>
+                                        <AnimatePresence>
+                                            {showReport && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                                                    className="absolute right-0 top-8 z-50 bg-popover border border-border rounded-xl shadow-xl p-3 w-44 space-y-2"
+                                                >
+                                                    <p className="text-xs font-medium">Report this user?</p>
+                                                    <Button size="sm" variant="destructive" className="w-full text-xs" onClick={handleReport}>
+                                                        Report & Block
+                                                    </Button>
+                                                    <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setShowReport(false)}>
+                                                        Cancel
+                                                    </Button>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
                                     </div>
+                                    <Button size="icon-sm" variant="ghost" onClick={handleSkip} title="Next">
+                                        <SkipForward className="h-3.5 w-3.5" />
+                                    </Button>
                                 </div>
+                            </div>
 
-                                {/* Messages */}
-                                <div className="flex-1 overflow-hidden">
-                                    <ChatPanel
-                                        messages={messages}
-                                        userId={user?.id ?? ''}
-                                        partnerTyping={partnerTyping}
-                                        onSend={sendMessage}
-                                        onTyping={notifyTyping}
-                                        disabled={!isConnected}
-                                    />
-                                </div>
+                            {/* Messages */}
+                            <div className="flex-1 overflow-hidden">
+                                <ChatPanel
+                                    messages={messages}
+                                    userId={user?.id ?? ''}
+                                    partnerTyping={partnerTyping}
+                                    onSend={sendMessage}
+                                    onTyping={notifyTyping}
+                                    disabled={!isConnected}
+                                />
                             </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* ── VIDEO INVITE OVERLAYS ── */}
-
-                {/* Incoming invite (user B receives) */}
+                {/* Video invite — incoming */}
                 <AnimatePresence>
                     {inviteStatus === 'pending_received' && (
                         <motion.div
@@ -346,20 +368,10 @@ export default function ChatPage() {
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button
-                                        className="flex-1 gap-1.5"
-                                        variant="vibely"
-                                        size="sm"
-                                        onClick={() => respondToInvite(true)}
-                                    >
+                                    <Button className="flex-1 gap-1.5" variant="vibely" size="sm" onClick={() => respondToInvite(true)}>
                                         <Check className="h-4 w-4" /> Accept
                                     </Button>
-                                    <Button
-                                        className="flex-1 gap-1.5"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => respondToInvite(false)}
-                                    >
+                                    <Button className="flex-1 gap-1.5" variant="outline" size="sm" onClick={() => respondToInvite(false)}>
                                         <X className="h-4 w-4" /> Decline
                                     </Button>
                                 </div>
@@ -368,7 +380,7 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* Waiting for response (user A sent invite) */}
+                {/* Video invite — waiting */}
                 <AnimatePresence>
                     {inviteStatus === 'pending_sent' && (
                         <motion.div
@@ -393,7 +405,7 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
 
-                {/* Rejected notification (user A) */}
+                {/* Video invite — rejected */}
                 <AnimatePresence>
                     {inviteStatus === 'rejected' && (
                         <motion.div
@@ -411,7 +423,7 @@ export default function ChatPage() {
                 </AnimatePresence>
             </div>
 
-            {/* ── Bottom Action Bar (connected only) ── */}
+            {/* Bottom Action Bar */}
             <AnimatePresence>
                 {isConnected && (
                     <motion.div

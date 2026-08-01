@@ -7,6 +7,6 @@ export interface AppError {
 
 export type Theme = 'light' | 'dark' | 'system';
 
-export type ChatType = 'text' | 'video';
+export type ChatType = 'text' | 'audio' | 'video';
 
 export type ConnectionStatus = 'idle' | 'searching' | 'connected' | 'disconnected' | 'error';
