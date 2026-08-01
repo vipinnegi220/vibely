@@ -40,7 +40,6 @@ export function useVideo({ matchId, userId, partnerId, enabled }: UseVideoOption
                     stream.getTracks().forEach((t) => t.stop());
                 }
             } catch {
-                // Fallback: audio only
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
                     if (!cancelled) {
@@ -61,13 +60,22 @@ export function useVideo({ matchId, userId, partnerId, enabled }: UseVideoOption
         return () => { cancelled = true; };
     }, [enabled]);
 
-    // Start WebRTC once we have match + local stream
+    // Start/restart WebRTC when matchId, userId, partnerId, or localStream changes
+    // Using matchId+userId+partnerId as the key ensures a fresh peer connection
+    // whenever we switch to video mid-call
     useEffect(() => {
+        // Destroy any existing connection first
+        if (webrtcRef.current) {
+            webrtcRef.current.destroy();
+            webrtcRef.current = null;
+            setRemoteStream(null);
+            setConnectionState('new');
+        }
+
         if (!matchId || !userId || !partnerId || !localStream || !enabled) return;
 
-        // Deterministic initiator: lexicographically smaller userId goes first
         const isInitiator = userId < partnerId;
-        console.log('[video] starting WebRTC, isInitiator:', isInitiator);
+        console.log('[video] starting WebRTC, isInitiator:', isInitiator, 'matchId:', matchId);
 
         const svc = new WebRTCService(matchId, userId, setRemoteStream, setConnectionState);
         webrtcRef.current = svc;

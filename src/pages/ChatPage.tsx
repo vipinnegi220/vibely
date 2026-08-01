@@ -107,23 +107,34 @@ export default function ChatPage() {
         }
 
         if (newType === 'video' && chatType !== 'video') {
-            // Video needs invite
+            // Stop any existing video/audio first
+            stopAll();
+            setVideoEnabled(false);
+            setAudioEnabled(false);
             setChatType('video');
             sendInvite();
             await switchType('video');
             return;
         }
 
-        // For text/audio switches — apply immediately and notify partner
-        setChatType(newType);
-        setVideoEnabled(newType === 'video');
-        setAudioEnabled(newType === 'audio' || newType === 'video');
-        if (newType !== 'video') {
+        if (newType === 'audio' && chatType !== 'audio') {
             stopAll();
-            resetInvite();
+            setVideoEnabled(false);
+            setChatType('audio');
+            setAudioEnabled(true);
+            await switchType('audio');
+            toast({ title: 'Switched to audio mode' });
+            return;
         }
-        await switchType(newType);
-        toast({ title: `Switched to ${newType} mode` });
+
+        // Text — stop all media
+        stopAll();
+        setVideoEnabled(false);
+        setAudioEnabled(false);
+        setChatType('text');
+        resetInvite();
+        await switchType('text');
+        toast({ title: 'Switched to text mode' });
     }
 
     function handleSkip() {
