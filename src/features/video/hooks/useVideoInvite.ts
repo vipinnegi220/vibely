@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type InviteStatus = 'idle' | 'pending_sent' | 'pending_received' | 'accepted' | 'rejected';
 
@@ -19,6 +20,8 @@ export function useVideoInvite({
     onInviteReceived,
 }: UseVideoInviteOptions) {
     const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle');
+    // Keep a ref to the subscribed channel so send/respond reuse it
+    const channelRef = useRef<RealtimeChannel | null>(null);
 
     useEffect(() => {
         if (!matchId || !userId) return;
@@ -43,30 +46,39 @@ export function useVideoInvite({
                     }
                 }
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log('[invite] channel status:', status);
+            });
 
-        return () => { supabase.removeChannel(channel); };
+        channelRef.current = channel;
+
+        return () => {
+            supabase.removeChannel(channel);
+            channelRef.current = null;
+        };
     }, [matchId, userId, onAccepted, onRejected, onInviteReceived]);
 
     const sendInvite = useCallback(async () => {
-        if (!matchId || !userId) return;
+        if (!channelRef.current || !userId) return;
         setInviteStatus('pending_sent');
-        await supabase.channel(`video-invite:${matchId}`).send({
+        console.log('[invite] sending video invite');
+        await channelRef.current.send({
             type: 'broadcast',
             event: 'video-invite',
             payload: { from: userId },
         });
-    }, [matchId, userId]);
+    }, [userId]);
 
     const respondToInvite = useCallback(async (accepted: boolean) => {
-        if (!matchId || !userId) return;
+        if (!channelRef.current || !userId) return;
         setInviteStatus(accepted ? 'accepted' : 'idle');
-        await supabase.channel(`video-invite:${matchId}`).send({
+        console.log('[invite] responding to invite:', accepted);
+        await channelRef.current.send({
             type: 'broadcast',
             event: 'video-response',
             payload: { from: userId, accepted },
         });
-    }, [matchId, userId]);
+    }, [userId]);
 
     const resetInvite = useCallback(() => setInviteStatus('idle'), []);
 

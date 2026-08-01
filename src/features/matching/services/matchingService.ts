@@ -83,14 +83,26 @@ export const matchingService = {
             .eq('id', matchId);
     },
 
-    // Notify partner of a chat type switch request
+    // Notify partner of a chat type switch — reuse the already-subscribed channel
     broadcastTypeSwitch(matchId: string, userId: string, newType: ChatType) {
-        return supabase.channel(`type-switch:${matchId}`)
-            .send({
+        const existing = supabase.getChannels().find(
+            (ch) => ch.topic === `realtime:type-switch:${matchId}`
+        );
+        if (existing) {
+            return existing.send({
                 type: 'broadcast',
                 event: 'type-switch',
                 payload: { from: userId, newType },
             });
+        }
+        // fallback: create, subscribe, send
+        const ch = supabase.channel(`type-switch:${matchId}`);
+        ch.subscribe();
+        return ch.send({
+            type: 'broadcast',
+            event: 'type-switch',
+            payload: { from: userId, newType },
+        });
     },
 
     subscribeToTypeSwitch(
