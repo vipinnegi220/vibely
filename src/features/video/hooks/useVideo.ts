@@ -15,36 +15,60 @@ export function useVideo({ matchId, userId, partnerId, enabled }: UseVideoOption
     const [micOn, setMicOn] = useState(true);
     const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
     const webrtcRef = useRef<WebRTCService | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
 
-    // Get local media
+    // Get local media when enabled
     useEffect(() => {
-        if (!enabled) return;
-        let stream: MediaStream;
+        if (!enabled) {
+            streamRef.current?.getTracks().forEach((t) => t.stop());
+            streamRef.current = null;
+            setLocalStream(null);
+            return;
+        }
 
-        navigator.mediaDevices
-            .getUserMedia({ video: true, audio: true })
-            .then((s) => {
-                stream = s;
-                setLocalStream(s);
-            })
-            .catch(() => {
-                // fallback: audio only
-                navigator.mediaDevices
-                    .getUserMedia({ video: false, audio: true })
-                    .then((s) => { stream = s; setLocalStream(s); })
-                    .catch(() => { /* no media */ });
-            });
+        let cancelled = false;
 
-        return () => {
-            stream?.getTracks().forEach((t) => t.stop());
-        };
+        async function getMedia() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                if (!cancelled) {
+                    streamRef.current = stream;
+                    setLocalStream(stream);
+                    setCamOn(true);
+                    setMicOn(true);
+                } else {
+                    stream.getTracks().forEach((t) => t.stop());
+                }
+            } catch {
+                // Fallback: audio only
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    if (!cancelled) {
+                        streamRef.current = stream;
+                        setLocalStream(stream);
+                        setCamOn(false);
+                        setMicOn(true);
+                    } else {
+                        stream.getTracks().forEach((t) => t.stop());
+                    }
+                } catch {
+                    console.warn('[video] no media devices available');
+                }
+            }
+        }
+
+        getMedia();
+        return () => { cancelled = true; };
     }, [enabled]);
 
-    // Start WebRTC when we have match + local stream
+    // Start WebRTC once we have match + local stream
     useEffect(() => {
         if (!matchId || !userId || !partnerId || !localStream || !enabled) return;
 
-        const isInitiator = userId < partnerId; // deterministic initiator
+        // Deterministic initiator: lexicographically smaller userId goes first
+        const isInitiator = userId < partnerId;
+        console.log('[video] starting WebRTC, isInitiator:', isInitiator);
+
         const svc = new WebRTCService(matchId, userId, setRemoteStream, setConnectionState);
         webrtcRef.current = svc;
         svc.start(localStream, isInitiator);
@@ -52,30 +76,36 @@ export function useVideo({ matchId, userId, partnerId, enabled }: UseVideoOption
         return () => {
             svc.destroy();
             webrtcRef.current = null;
+            setRemoteStream(null);
+            setConnectionState('new');
         };
     }, [matchId, userId, partnerId, localStream, enabled]);
 
     const toggleCam = useCallback(() => {
-        localStream?.getVideoTracks().forEach((t) => {
-            t.enabled = !t.enabled;
-        });
-        setCamOn((v) => !v);
-    }, [localStream]);
+        const tracks = streamRef.current?.getVideoTracks();
+        if (!tracks?.length) return;
+        const next = !tracks[0].enabled;
+        tracks.forEach((t) => { t.enabled = next; });
+        setCamOn(next);
+    }, []);
 
     const toggleMic = useCallback(() => {
-        localStream?.getAudioTracks().forEach((t) => {
-            t.enabled = !t.enabled;
-        });
-        setMicOn((v) => !v);
-    }, [localStream]);
+        const tracks = streamRef.current?.getAudioTracks();
+        if (!tracks?.length) return;
+        const next = !tracks[0].enabled;
+        tracks.forEach((t) => { t.enabled = next; });
+        setMicOn(next);
+    }, []);
 
     const stopAll = useCallback(() => {
-        localStream?.getTracks().forEach((t) => t.stop());
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
         setLocalStream(null);
         setRemoteStream(null);
         webrtcRef.current?.destroy();
         webrtcRef.current = null;
-    }, [localStream]);
+        setConnectionState('new');
+    }, []);
 
     return { localStream, remoteStream, camOn, micOn, connectionState, toggleCam, toggleMic, stopAll };
 }
