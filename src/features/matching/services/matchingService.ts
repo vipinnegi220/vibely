@@ -45,7 +45,12 @@ export const matchingService = {
     },
 
     async tryMatch(userId: string, chatType: 'text' | 'video'): Promise<Match | null> {
-        // No cutoff filter — stale entries are cleaned on joinQueue
+        console.log('[matching] tryMatch userId:', userId, 'chatType:', chatType);
+
+        // Debug: fetch ALL rows first to see what's visible
+        const { data: allRows } = await db.from('waiting_queue').select('user_id, chat_type');
+        console.log('[matching] all visible rows:', allRows);
+
         const { data: candidates, error: fetchError } = await db
             .from('waiting_queue')
             .select('user_id, joined_at')
